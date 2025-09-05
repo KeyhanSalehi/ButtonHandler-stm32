@@ -6,54 +6,54 @@
 
 ## Overview
 
-The Button Handler library is a lightweight C library designed for handling button inputs on embedded systems (e.g., STM32 microcontrollers). It provides debouncing, press counting, and release detection with timeout functionality using a software timer. This helps in reliably reading button presses, avoiding noise from mechanical switches, and counting multiple presses within a time window.
-
-The library uses HAL_GPIO functions (from STM32 HAL) for GPIO operations and assumes a `softTimer` library for timing. It supports configurable pull-up/down modes and limits the maximum press count to prevent overflows.
+The Button Handler library is a lightweight C library designed for handling button inputs on embedded systems, specifically STM32 microcontrollers. It provides debouncing, press counting, and timeout detection using software timers, enabling reliable detection of single, double, or multiple button presses within a specified time window. The library supports configurable pull-up/down modes and limits the maximum press count to prevent overflows.
 
 ### Key Features
 - **Debouncing**: Filters out noise from button bounces with a configurable delay (default: 50ms).
 - **Press Counting**: Counts consecutive button presses within a timeout period (default: 1 second).
-- **Timeout Detection**: Automatically finalizes the count after a timeout if no more presses occur.
-- **Pull Configuration**: Supports GPIO_PULLUP, GPIO_PULLDOWN, or GPIO_NOPULL.
+- **Timeout Detection**: Finalizes the count after a timeout if no more presses occur.
+- **Pull Configuration**: Supports `GPIO_PULLUP`, `GPIO_PULLDOWN`, or `GPIO_NOPULL`.
 - **State Management**: Tracks button state to detect transitions accurately.
-- **Error Handling**: Returns status codes for success, failure, or busy states.
-- **Lightweight**: Minimal dependencies, suitable for resource-constrained embedded systems.
+- **Error Handling**: Returns status codes (`return_success`, `return_failed`, `return_busy`).
+- **Lightweight**: Minimal dependencies, ideal for resource-constrained systems.
 
 ## Dependencies
-- STM32 HAL Library (for GPIO operations like `HAL_GPIO_ReadPin`).
-- `softTimer.h` library (for software timers; must be implemented separately or included from your project).
-- `Common.h` (assumed to include standard types like `return_t`, `bool`, etc.; replace with your project's common headers if needed).
+- **STM32 HAL Library**: Required for GPIO operations (e.g., `HAL_GPIO_ReadPin`).
+- **`softTimer.h`**: Software timer library for debouncing and timeout (must be implemented or included in your project).
+- **`Common.h`**: Assumed to define standard types like `return_t`, `bool`, etc. Replace with your project's common headers if needed.
 
-**Note**: This library does not handle GPIO initialization. You must configure the GPIO pin as input (with appropriate pull) in your MCU's configuration tool (e.g., STM32CubeMX).
+**Note**: This library does not handle GPIO initialization. Configure GPIO pins as inputs with appropriate pull settings using your MCU configuration tool (e.g., STM32CubeMX).
 
 ## Installation
 1. Clone or download the repository.
-2. Copy `button_handler.h` and `button_handler.c` into your project directory.
+2. Place the following files in your project:
+   - Copy `button_handler.h` to your `Inc` (include) directory.
+   - Copy `button_handler.c` to your `Src` (source) directory.
 3. Include `button_handler.h` in your source files where needed.
-4. Ensure `softTimer.h` and any other dependencies are available in your include path.
-5. Add the files to your build system (e.g., Makefile, IDE project).
+4. Ensure `softTimer.h` and other dependencies are in your include path.
+5. Add `button_handler.c` and `button_handler.h` to your build system (e.g., Makefile, STM32CubeIDE project).
 
 ## Usage
 ### Basic Workflow
-1. **Initialize the Button**: Call `Button_Init` to set up the button structure with GPIO port, pin, and pull configuration.
+1. **Initialize the Button**: Call `Button_Init` to set up a button with GPIO port, pin, and pull configuration.
 2. **Poll the Button**: In your main loop or timer interrupt, call `Button_GetFinalCount` to check for completed reads.
-3. **Handle Results**: When a count is ready (after timeout), process the final press count.
+3. **Handle Results**: Process the final press count after the timeout period.
 
 The library uses a polling approach in `Button_GetFinalCount`, which internally calls `Button_CountPushes` to handle state transitions and timers.
 
 ### Configuration Options
-- **Debounce Delay**: Defined as `DEBOUNCE_DELAY_MS` (default: 50ms). This is the minimum time between valid presses to ignore bounces. Adjust in `button_handler.c` if needed.
-- **Timeout Delay**: Defined as `BUTTON_TIMEOUT_MS` (default: 1000ms or 1 second). This is the idle time after the last press before finalizing the count. Adjust in `button_handler.c`.
-- **Max Push Count**: Defined as `PUSH_COUNT_MAX` (default: 5). Prevents counting beyond this limit; resets to 0 on overflow.
-- **Pull Mode**: Specified in `Button_Init` (GPIO_PULLUP, GPIO_PULLDOWN, or GPIO_NOPULL). Determines active/low logic:
-  - GPIO_PULLUP: Button press pulls to LOW (active low).
-  - GPIO_PULLDOWN: Button press pulls to HIGH (active high).
-- **Return Types** (from `return_t`, assumed in `Common.h`):
-  - `return_success`: Count is valid and ready.
-  - `return_failed`: Invalid count (e.g., overflow or zero presses).
-  - `return_busy`: Still waiting for timeout or more presses.
+- **Debounce Delay** (`DEBOUNCE_DELAY_MS`): Default 50ms. Adjust in `button_handler.c` to change the minimum time between valid presses.
+- **Timeout Delay** (`BUTTON_TIMEOUT_MS`): Default 1000ms (1 second). Adjust in `button_handler.c` to change the idle time before finalizing the count.
+- **Max Push Count** (`PUSH_COUNT_MAX`): Default 5. Adjust in `button_handler.h` to allow more presses (see below for details).
+- **Pull Mode**: Set in `Button_Init` (`GPIO_PULLUP`, `GPIO_PULLDOWN`, or `GPIO_NOPULL`):
+  - `GPIO_PULLUP`: Button press is LOW (active low).
+  - `GPIO_PULLDOWN`: Button press is HIGH (active high).
+- **Return Types** (from `return_t` in `Common.h`):
+  - `return_success`: Valid count ready.
+  - `return_failed`: Invalid count (e.g., 0 or > `PUSH_COUNT_MAX`).
+  - `return_busy`: Still counting presses.
 
-**Note**: Timers must be updated externally. Call `softTimer_update()` (or equivalent) in your system's tick handler (e.g., SysTick) to keep timers running.
+**Note**: Call `softTimer_update()` regularly (e.g., every 1ms in `SysTick_Handler`) to update timers.
 
 ## API Reference
 
@@ -77,65 +77,101 @@ typedef struct {
 - **Description**: Initializes the button structure.
 - **Parameters**:
   - `button`: Pointer to a `Button_t` instance.
-  - `port`: GPIO port (e.g., GPIOA).
-  - `pin`: GPIO pin (e.g., GPIO_PIN_0).
-  - `pull`: Pull mode (GPIO_PULLUP, GPIO_PULLDOWN, or GPIO_NOPULL).
+  - `port`: GPIO port (e.g., `GPIOA`).
+  - `pin`: GPIO pin (e.g., `GPIO_PIN_0`).
+  - `pull`: Pull mode (`GPIO_PULLUP`, `GPIO_PULLDOWN`, or `GPIO_NOPULL`).
 - **Returns**: Void.
 - **Notes**: Resets counters and timers. GPIO must be pre-configured as input.
 
 #### `return_t Button_GetFinalCount(Button_t *button, uint8_t *finalCount)`
-- **Description**: Retrieves the final press count after timeout. Internally handles counting and validation.
+- **Description**: Retrieves the final press count after timeout.
 - **Parameters**:
   - `button`: Pointer to a `Button_t` instance.
-  - `finalCount`: Pointer to store the final count (1 to PUSH_COUNT_MAX).
+  - `finalCount`: Pointer to store the final count (1 to `PUSH_COUNT_MAX`).
 - **Returns**:
   - `return_success`: Valid count stored in `finalCount`.
-  - `return_failed`: Invalid (e.g., 0 or > max).
-  - `return_busy`: Still counting (call again later).
-- **Notes**: Call this in a loop. Resets internal state on success/failure.
+  - `return_failed`: Invalid count (e.g., 0 or > max).
+  - `return_busy`: Still counting.
+- **Notes**: Call in a loop. Resets state on success/failure.
 
-## Example Usage
-Below is a complete example assuming an STM32 project with SysTick for timer updates. Replace placeholders with your actual setup.
+## Example Usage: Counting Button Presses
+This example shows how to count button presses and perform actions based on the count (e.g., single press, double press). It handles two buttons with different pull configurations.
 
 ### Example Code
 ```c
-// main.c
+// Src/main.c
 #include "button_handler.h"
 #include "softTimer.h"  // Your software timer library
 #include "Common.h"     // For return_t, bool, etc.
 #include <stdio.h>      // For printf (debug)
 
-// Global button instance
-Button_t myButton;
+// Global button instances
+Button_t key1;  // Button with pull-up (active low)
+Button_t key2;  // Button with pull-down (active high)
 
 // In your SysTick_Handler or timer update function
 void SysTick_Handler(void) {
-    HAL_IncTick();  // STM32 HAL tick
+    HAL_IncTick();       // STM32 HAL tick
     softTimer_update();  // Update all software timers
+}
+
+// Handle actions based on press count
+void HandleButtonPress(uint8_t keyVal, const char* buttonName) {
+    switch (keyVal) {
+        case 1:
+            printf("%s: Single press detected - Toggle LED\n", buttonName);
+            // Example: HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+            break;
+        case 2:
+            printf("%s: Double press detected - Change mode\n", buttonName);
+            // Example: Change system mode
+            break;
+        case 3:
+            printf("%s: Triple press detected - Reset system\n", buttonName);
+            // Example: NVIC_SystemReset();
+            break;
+        case 4:
+            printf("%s: Quad press detected - Enter config mode\n", buttonName);
+            // Example: Enter configuration mode
+            break;
+        default:
+            printf("%s: Unsupported press count (%d)\n", buttonName, keyVal);
+            break;
+    }
 }
 
 int main(void) {
     // HAL and system init (from STM32CubeMX)
     HAL_Init();
-    // ... GPIO init: Configure button pin as input with pull-up
+    // ... GPIO init: Configure button pins as input
+    // Example: key1 on GPIOA Pin 0 (pull-up), key2 on GPIOB Pin 1 (pull-down)
 
-    // Initialize button on GPIOA Pin 0 with pull-up
-    Button_Init(&myButton, GPIOA, GPIO_PIN_0, GPIO_PULLUP);
+    // Initialize buttons
+    Button_Init(&key1, GPIOA, GPIO_PIN_0, GPIO_PULLUP);   // Active low
+    Button_Init(&key2, GPIOB, GPIO_PIN_1, GPIO_PULLDOWN); // Active high
 
-    uint8_t pressCount = 0;
+    uint8_t key1Val = 0;
+    uint8_t key2Val = 0;
     return_t status;
 
     while (1) {
-        // Poll for final count
-        status = Button_GetFinalCount(&myButton, &pressCount);
-
+        // Poll for key1
+        status = Button_GetFinalCount(&key1, &key1Val);
         if (status == return_success) {
-            printf("Button pressed %d times!\n", pressCount);
-            // Handle logic based on count (e.g., 1: single click, 2: double click)
+            HandleButtonPress(key1Val, "Key1");
+            key1Val = 0;  // Reset count for next read
         } else if (status == return_failed) {
-            printf("Invalid button count.\n");
+            printf("Key1: Invalid button count\n");
         }
-        // Busy: continue looping
+
+        // Poll for key2
+        status = Button_GetFinalCount(&key2, &key2Val);
+        if (status == return_success) {
+            HandleButtonPress(key2Val, "Key2");
+            key2Val = 0;  // Reset count for next read
+        } else if (status == return_failed) {
+            printf("Key2: Invalid button count\n");
+        }
 
         // Other main loop code...
         HAL_Delay(10);  // Small delay to avoid tight loop (optional)
@@ -144,23 +180,83 @@ int main(void) {
 ```
 
 ### Explanation of Example
-- **Initialization**: Sets up the button on a specific pin with pull-up. Active state is LOW (button grounds the pin).
-- **Polling**: `Button_GetFinalCount` is called repeatedly. It debounces presses, counts them, and waits for 1 second of inactivity.
-- **Handling Results**:
-  - On success: `pressCount` holds the number (e.g., 3 for triple press).
-  - Use cases: Single press (1) for toggle, double press (2) for mode change, etc.
-- **Options in Action**:
-  - If using GPIO_PULLDOWN, change to `GPIO_PULLDOWN` in init; active state becomes HIGH.
-  - Adjust delays in defines for faster/slower response (e.g., shorter debounce for responsive UI).
+- **Multiple Buttons**: Initializes two buttons (`key1`: pull-up, `key2`: pull-down) to demonstrate handling different pull configurations.
+- **Action Handler**: The `HandleButtonPress` function maps press counts to actions (e.g., 1 press: toggle LED, 2 presses: change mode).
+- **Reset Count**: Resets `keyVal` to 0 after a successful read, preparing for the next sequence.
+- **Pull Modes**: `key1` detects LOW on press (pull-up), `key2` detects HIGH (pull-down).
+- **Polling**: Both buttons are polled in the main loop, with debouncing and timeout handled internally.
+
+## Adjusting `PUSH_COUNT_MAX`
+To support more presses (e.g., up to 10), modify `PUSH_COUNT_MAX` in `Inc/button_handler.h`:
+
+1. **Edit `button_handler.h`**:
+   Change:
+   ```c
+   #define PUSH_COUNT_MAX 5
+   ```
+   to:
+   ```c
+   #define PUSH_COUNT_MAX 10
+   ```
+
+2. **Update Application Code**:
+   Extend `HandleButtonPress` to handle additional counts:
+   ```c
+   void HandleButtonPress(uint8_t keyVal, const char* buttonName) {
+       switch (keyVal) {
+           case 1:
+               printf("%s: Single press - Toggle LED\n", buttonName);
+               break;
+           case 2:
+               printf("%s: Double press - Change mode\n", buttonName);
+               break;
+           case 3:
+               printf("%s: Triple press - Reset system\n", buttonName);
+               break;
+           case 4:
+               printf("%s: Quad press - Enter config mode\n", buttonName);
+               break;
+           case 5:
+               printf("%s: Five presses - Custom action\n", buttonName);
+               break;
+           // Add more cases up to 10
+           case 10:
+               printf("%s: Ten presses - Special action\n", buttonName);
+               break;
+           default:
+               printf("%s: Unsupported press count (%d)\n", buttonName, keyVal);
+               break;
+       }
+   }
+   ```
+
+3. **Consider Type Limits**:
+   - `pushCount` is a `uint8_t` (max 255). For `PUSH_COUNT_MAX` > 255, change to `uint16_t` in `button_handler.h`:
+     ```c
+     volatile uint16_t pushCount;
+     ```
+   - Update overflow checks in `button_handler.c` accordingly.
+
+4. **Adjust Timeout**:
+   - For higher counts, consider increasing `BUTTON_TIMEOUT_MS` in `button_handler.c` (e.g., to 2000ms) to give users enough time to press multiple times.
+
+5. **Test**:
+   - Verify debouncing (`DEBOUNCE_DELAY_MS`) suits the new count range.
+   - Test with your hardware to ensure reliable counting.
+
+### Implications
+- **Pros**: Supports complex input patterns (e.g., 10 presses for a special command).
+- **Cons**: Longer timeouts may increase latency; high counts may be hard for users to perform.
+- **Recommendation**: Keep `PUSH_COUNT_MAX` ≤ 10 for usability. For very high counts, consider alternative inputs (e.g., long press).
 
 ## Troubleshooting
-- **No Counts Detected**: Ensure GPIO is configured correctly and button wiring matches pull mode.
-- **Timers Not Working**: Verify `softTimer_update()` is called regularly (e.g., every 1ms).
-- **Overflow**: If presses exceed `PUSH_COUNT_MAX`, it returns failed and resets.
-- **Debounce Issues**: If buttons are very noisy, increase `DEBOUNCE_DELAY_MS`.
+- **No Counts Detected**: Check GPIO configuration and wiring (pull-up: button to GND; pull-down: button to VCC).
+- **Timers Not Working**: Ensure `softTimer_update()` is called regularly (e.g., every 1ms).
+- **Overflow**: Counts exceeding `PUSH_COUNT_MAX` return `return_failed` and reset.
+- **Debounce Issues**: Increase `DEBOUNCE_DELAY_MS` if buttons are noisy.
 
 ## Contributing
-Contributions are welcome! Fork the repo, make changes, and submit a pull request. Please fix any typos (e.g., "debounCing" to "debouncing") in code/comments.
+Contributions are welcome! Fork the repo, make changes, and submit a pull request. Please fix typos (e.g., "debounCing" to "debouncing") in code/comments.
 
 ## License
 MIT License. See [LICENSE](LICENSE) for details.
